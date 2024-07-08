@@ -1,0 +1,136 @@
+//Pin definition for LCD display
+#include <LiquidCrystal.h>
+int DB7 = 4;
+int DB6 = 5;
+int DB5 = 6;
+int DB4 = 7;
+int E = 9;
+int RS = 8;
+LiquidCrystal lcd(RS, E, DB4, DB5, DB6, DB7); // inicializacion		
+
+int LED = 10;
+
+//variables globales
+int direccion=0;
+float voltage = 0;
+int value = 0;
+
+int pinAnalog = A5;
+
+
+// Pin definition for the motor control (driver = L293D)
+const	int	EN = 11;
+const	int C1 = 12;
+const	int C2 = 13;
+		int T = 10;					// Sampling time
+
+// Pin definition for the encoder connection
+const	int encoderPinA = 2;
+const	int encoderPinB = 3;
+		int encoderPos = 0;
+		int	counter[2] = {0, 0};	// Counter vector
+const	float ratio = 360.0 / 188.611 / 48;
+
+// Constants of the controller
+      	int error[3] = {0,0,0};    	// Error vector
+        int u[2] = {0,0};         	// Control vector
+		int speedRPM = 0;
+
+void setup() {
+  pinMode(EN, OUTPUT);
+  pinMode(C1, OUTPUT);
+  pinMode(C2, OUTPUT);
+  digitalWrite(C1, HIGH);
+  digitalWrite(C2, LOW);
+  
+  pinMode(direccion, INPUT);
+  lcd.begin(16, 2);
+  
+  pinMode(encoderPinA, INPUT_PULLUP);
+  attachInterrupt(0, doEncoderA, CHANGE);
+  
+  pinMode(encoderPinB, INPUT_PULLUP);
+  attachInterrupt(1, doEncoderB, CHANGE);
+  
+  pinMode(LED,OUTPUT);
+  
+  Serial.begin(9600);
+}
+
+// ********************** + Main loop + ********************************
+void loop(){
+  int setpoint = analogRead(pinAnalog);	// Setpoint definition
+  
+  error[0] = setpoint - speedRPM;	// e[k]
+  
+  counter[0] = encoderPos;
+    
+  u[0] = pidAntiWindUp(error[0], error[1], error[2], u[1], 0, 255, T);
+  analogWrite(EN, u[0]);
+  
+  int speedRPM = abs(counter[0] - counter[1]) * 20;
+  float deg = float(encoderPos) * ratio;
+  Serial.print(speedRPM);
+  Serial.print(" ");
+  Serial.println(u[0]);
+  
+  counter[1] = counter[0];			// Shift register
+  error[1] = error[0];            	// Shifting operation
+  error[2] = error[1];              // Shifting operation
+  u[1] = u[0];                      // Shifting operation  
+  delay(T);							// Sampling delay
+  
+  //Direccion del motor
+  value = digitalRead(direccion);
+  if( value == HIGH)
+  {
+    digitalWrite(C1, HIGH);
+    digitalWrite(C2, LOW);
+    digitalWrite(LED, LOW);
+  }
+  else
+  {
+    digitalWrite(C1, LOW);
+    digitalWrite(C2, HIGH);
+    digitalWrite(LED, HIGH);
+  }
+  
+  
+  lcd.setCursor(0, 0);
+  lcd.print("Speed: ");
+  lcd.setCursor(8, 0);
+  lcd.print(speedRPM);
+  lcd.setCursor(0, 1);
+  lcd.print("Position:");
+  lcd.setCursor(9, 1);
+  lcd.print(deg);
+  
+}
+// *********************************************************************
+
+// Auxiliar functions
+void doEncoderA(){
+  encoderPos += (digitalRead(encoderPinA) == digitalRead(encoderPinB))?1:-1;
+}
+
+void doEncoderB(){
+  encoderPos += (digitalRead(encoderPinA) == digitalRead(encoderPinB))?-1:1;
+}
+
+int pidAntiWindUp(int e0, int e1, int e2, int u1, int lb, int ub, float T){
+  const float Kp = .3;                   // Proportional gain
+  const float Ti = 90;                  // Integral time
+  const float Td = 0.0;                   // Derivative time  
+  const float Tt = Ti;                  // Anti windup gain
+  T = T / 1000;                           // Conversion from ms to s
+  float v = sat(u1, lb, ub) - u1;         // Saturation difference calculation
+  float u = u1 + Kp * (e0 - e1 + T/Ti * e0 + Td/T * (e0 - 2*e1 + e2));// + T/Ti * v;
+  u = sat(u, lb, ub);
+  return u;
+}
+
+int sat(int s, int lb, int ub) {    // Saturation function
+  if (s >= ub) return ub;
+  if (s <= lb) return lb;
+  return s;
+}

@@ -3,3 +3,4 @@ This project involoves an anti-windup PID algorithm to precisely regulate motor 
 
 Simulations
 The tinkercad Simulations have ben attached as a separarte file
+In Simulation results we can see that on providing certain spikes (interruption in rotation of motor using debounce button) PID controller bring the speed to th Preset value from Pulse Width Modulator.
